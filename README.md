@@ -35,6 +35,14 @@ cargo build --release
 
 The first embedding run downloads the MiniLM model into the local Hugging Face / fastembed cache (~tens of MB, once).
 
+### Linux wheels (Podman)
+
+Same Containerfile CI uses (Ubuntu 24.04 / glibc 2.39 — required by current ORT prebuilts):
+
+```bash
+./scripts/build-wheel.sh   # writes dist/*.whl
+```
+
 ## Usage
 
 ```bash

@@ -7,4 +7,5 @@ context-server
 models/
 third_party/
 .fastembed_cache/
+/dist/
 **/.DS_Store

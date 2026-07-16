@@ -6,9 +6,10 @@
 #
 # Local:
 #   ./scripts/build-wheel.sh
+#   VERSION=2026.716.1 ./scripts/build-wheel.sh
 #
 # Extract without the helper:
-#   podman build -t context-server-wheel -f Containerfile .
+#   podman build --build-arg VERSION=2026.716.1 -t context-server-wheel -f Containerfile .
 #   cid=$(podman create context-server-wheel)
 #   podman cp "$cid:/out/." ./dist/ && podman rm "$cid"
 
@@ -45,6 +46,10 @@ RUN python3 -m pip install --break-system-packages 'maturin[patchelf]>=1.0,<2.0'
 
 WORKDIR /src
 COPY . .
+
+# Optional CalVer override (YYYY.MMDD.N) from CI / build-wheel.sh
+ARG VERSION=
+RUN if [ -n "$VERSION" ]; then bash ./scripts/set-version.sh "$VERSION"; fi
 
 # Tag as manylinux_2_39; maturin/patchelf vendors libssl into the wheel for PyPI.
 RUN mkdir -p /out \

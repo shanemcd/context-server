@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      # CalVer: YYYY.MMDD.N (e.g. 2026.716.1)
+      - '[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
 
 permissions:
@@ -23,13 +24,31 @@ jobs:
             arch: aarch64
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="$(./scripts/next-calver.sh)"
+          fi
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using VERSION=$VERSION"
 
       # Same Containerfile as local `./scripts/build-wheel.sh` (podman/docker).
       # Ubuntu 24.04 base is required: ort prebuilts need glibc >= ~2.38.
       - name: Build wheel with Containerfile
         run: |
           set -euo pipefail
-          docker build -t context-server-wheel -f Containerfile .
+          docker build \
+            --build-arg "VERSION=${{ steps.ver.outputs.version }}" \
+            -t context-server-wheel \
+            -f Containerfile .
           cid="$(docker create context-server-wheel)"
           mkdir -p dist
           docker cp "$cid:/out/." dist/
@@ -46,6 +65,22 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="$(./scripts/next-calver.sh)"
+          fi
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          chmod +x scripts/*.sh
+          ./scripts/set-version.sh "$VERSION"
 
       # ort does not ship prebuilt ONNX Runtime for x86_64-apple-darwin.
       - uses: PyO3/maturin-action@v1

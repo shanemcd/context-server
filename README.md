@@ -49,8 +49,22 @@ Same Containerfile CI uses (Ubuntu 24.04 / glibc 2.39 — required by current OR
 
 ```bash
 ./scripts/build-wheel.sh   # writes dist/*.whl
+VERSION=2026.716.1 ./scripts/build-wheel.sh  # optional CalVer override
 ```
 
+## Releasing (CalVer)
+
+Versions are **CalVer** `YYYY.MMDD.N` (e.g. `2026.716.1`) so they are valid for
+both Cargo SemVer and PyPI. `pyproject.toml` takes the version from
+`Cargo.toml`; release CI rewrites that from the git tag before building.
+
+```bash
+tag="$(./scripts/next-calver.sh)"
+git tag -a "$tag" -m "$tag"
+git push origin "$tag"    # triggers Release workflow → PyPI
+```
+
+`setuptools-scm` is not used (maturin cannot consume it).
 ## Usage
 
 ```bash

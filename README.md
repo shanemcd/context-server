@@ -87,15 +87,23 @@ Default mode is **hybrid**: dense cosine (MiniLM) plus BM25, fused with reciproc
 context-server search --db context.db --mode hybrid "query"   # default
 context-server search --db context.db --mode dense "query"
 context-server search --db context.db --mode lexical "query"
+
+# Scope to a subtree / heading / metadata tag
+context-server search --db context.db --path-prefix teams/ "who owns storage"
+context-server search --db context.db --heading Backport "z-stream"
+context-server get --db context.db --path teams/storage.md --chunk 0
 ```
 
 ## MCP tools
 
 | Tool | Role |
 |------|------|
-| `semantic_search` | Ranked passages + scores |
-| `list_documents` | Indexed chunks |
-| `answer_question` | Best matching passage(s) — retrieval only, not generative QA |
+| `semantic_search` | Ranked passages + scores; optional `path_prefix` / `heading` / `tag` filters |
+| `list_documents` | Indexed chunks; optional `path_prefix` |
+| `answer_question` | Best matching passage(s) — retrieval only; same filters as search |
+| `get_document` | Full chunk by citation (`source_path` + `chunk_index`), or all chunks for a path |
+
+Search hits cite chunks as `source_path#chunk_index`. Call `get_document` to pull the full text for quoting.
 
 ## Remote database (GCS)
 
@@ -117,7 +125,9 @@ Uses [Application Default Credentials](https://cloud.google.com/docs/authenticat
 context-server index  --input <path> [--db FILE] [--dry-run] [--batch N]
                       [--instructions TEXT | --instructions-file FILE]
 context-server serve  --db <local path | gs://…>
-context-server search --db <local path | gs://…> [--limit N] [--mode hybrid|dense|lexical] <query>
+context-server search --db <local path | gs://…> [--limit N] [--mode hybrid|dense|lexical]
+                      [--path-prefix P] [--heading H] [--tag T] <query>
+context-server get    --db <local path | gs://…> --path FILE [--chunk N]
 context-server embed  <text>          # smoke-test embeddings
 ```
 

@@ -38,6 +38,78 @@ pub struct ResultHit {
     pub text: String,
 }
 
+/// Optional constraints applied after scoring (non-matching docs are dropped).
+#[derive(Debug, Clone, Default)]
+pub struct SearchFilter {
+    /// Keep chunks whose `source_path` starts with this prefix (e.g. `teams/`).
+    pub path_prefix: Option<String>,
+    /// Keep chunks where any heading contains this substring (case-insensitive).
+    pub heading: Option<String>,
+    /// Keep chunks whose metadata `tags` array contains this value (case-insensitive),
+    /// or whose string metadata values equal it.
+    pub tag: Option<String>,
+}
+
+impl SearchFilter {
+    pub fn is_empty(&self) -> bool {
+        self.path_prefix.as_ref().is_none_or(|s| s.is_empty())
+            && self.heading.as_ref().is_none_or(|s| s.is_empty())
+            && self.tag.as_ref().is_none_or(|s| s.is_empty())
+    }
+
+    pub fn matches(&self, doc: &Document) -> bool {
+        if let Some(prefix) = self.path_prefix.as_ref().filter(|s| !s.is_empty()) {
+            if !doc.source_path.starts_with(prefix.as_str()) {
+                return false;
+            }
+        }
+        if let Some(heading) = self.heading.as_ref().filter(|s| !s.is_empty()) {
+            let needle = heading.to_ascii_lowercase();
+            let ok = doc
+                .headings
+                .iter()
+                .any(|h| h.to_ascii_lowercase().contains(&needle));
+            if !ok {
+                return false;
+            }
+        }
+        if let Some(tag) = self.tag.as_ref().filter(|s| !s.is_empty()) {
+            if !metadata_has_tag(&doc.metadata, tag) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn metadata_has_tag(metadata: &serde_json::Map<String, serde_json::Value>, tag: &str) -> bool {
+    let needle = tag.to_ascii_lowercase();
+    if let Some(tags) = metadata.get("tags") {
+        match tags {
+            serde_json::Value::Array(arr) => {
+                if arr.iter().any(|v| match v {
+                    serde_json::Value::String(s) => s.to_ascii_lowercase() == needle,
+                    _ => v.to_string().trim_matches('"').to_ascii_lowercase() == needle,
+                }) {
+                    return true;
+                }
+            }
+            serde_json::Value::String(s)
+                if s.split(',')
+                    .map(str::trim)
+                    .any(|t| t.to_ascii_lowercase() == needle) =>
+            {
+                return true;
+            }
+            _ => {}
+        }
+    }
+    metadata.values().any(|v| match v {
+        serde_json::Value::String(s) => s.to_ascii_lowercase() == needle,
+        _ => false,
+    })
+}
+
 pub struct Index {
     docs: Vec<Document>,
     bm25: Bm25,
@@ -59,6 +131,26 @@ impl Index {
         self.docs.is_empty()
     }
 
+    /// Fetch a single chunk by stable citation key (`source_path` + `chunk_index`).
+    pub fn get(&self, source_path: &str, chunk_index: usize) -> Option<&Document> {
+        self.docs
+            .iter()
+            .find(|d| d.source_path == source_path && d.chunk_index == chunk_index)
+    }
+
+    /// All chunks for a source path, ordered by `chunk_index`.
+    pub fn get_by_path(&self, source_path: &str) -> Vec<&Document> {
+        let mut docs: Vec<&Document> = self
+            .docs
+            .iter()
+            .filter(|d| d.source_path == source_path)
+            .collect();
+        docs.sort_by_key(|d| d.chunk_index);
+        docs
+    }
+
+    /// Unfiltered search (all indexed chunks).
+    #[allow(dead_code)]
     pub fn query(
         &self,
         emb: &mut Embedder,
@@ -66,8 +158,28 @@ impl Index {
         limit: usize,
         mode: SearchMode,
     ) -> Result<Vec<ResultHit>> {
+        self.query_filtered(emb, query, limit, mode, &SearchFilter::default())
+    }
+
+    pub fn query_filtered(
+        &self,
+        emb: &mut Embedder,
+        query: &str,
+        limit: usize,
+        mode: SearchMode,
+        filter: &SearchFilter,
+    ) -> Result<Vec<ResultHit>> {
         let limit = if limit == 0 { 5 } else { limit };
         if self.docs.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mask: Vec<bool> = if filter.is_empty() {
+            vec![true; self.docs.len()]
+        } else {
+            self.docs.iter().map(|d| filter.matches(d)).collect()
+        };
+        if !mask.iter().any(|&m| m) {
             return Ok(vec![]);
         }
 
@@ -77,14 +189,26 @@ impl Index {
                 let qv = emb.embed(query)?;
                 self.docs
                     .iter()
-                    .map(|d| embed::cosine(&qv, &d.vector))
+                    .enumerate()
+                    .map(|(i, d)| {
+                        if mask[i] {
+                            embed::cosine(&qv, &d.vector)
+                        } else {
+                            0.0
+                        }
+                    })
                     .collect()
             }
         };
-        let lexical_scores: Vec<f32> = match mode {
+        let mut lexical_scores: Vec<f32> = match mode {
             SearchMode::Dense => vec![0.0; self.docs.len()],
             SearchMode::Lexical | SearchMode::Hybrid => self.bm25.scores(query),
         };
+        for (i, m) in mask.iter().enumerate() {
+            if !m {
+                lexical_scores[i] = 0.0;
+            }
+        }
 
         let hits = match mode {
             SearchMode::Dense => rank_by_scores(&self.docs, &dense_scores, &lexical_scores, limit),
@@ -93,7 +217,18 @@ impl Index {
             }
             SearchMode::Hybrid => hybrid_rrf(&self.docs, &dense_scores, &lexical_scores, limit),
         };
-        Ok(hits)
+        // Drop zero-score hits that slipped through when everything was filtered out of ranking ties
+        Ok(hits
+            .into_iter()
+            .filter(|h| {
+                filter.is_empty()
+                    || self
+                        .docs
+                        .iter()
+                        .find(|d| d.source_path == h.source_path && d.chunk_index == h.chunk_index)
+                        .is_some_and(|d| filter.matches(d))
+            })
+            .collect())
     }
 
     #[allow(dead_code)] // used by unit tests; kept for dense-only callers
@@ -230,5 +365,117 @@ mod tests {
         let lexical = idx.bm25.scores("jsmith");
         let hits = hybrid_rrf(&idx.docs, &dense, &lexical, 2);
         assert!(hits[0].text.contains("jsmith"), "{hits:?}");
+    }
+
+    fn doc_at(
+        id: i64,
+        path: &str,
+        chunk_index: usize,
+        text: &str,
+        headings: &[&str],
+        tags: &[&str],
+        vector: Vec<f32>,
+    ) -> Document {
+        let mut metadata = serde_json::Map::new();
+        if !tags.is_empty() {
+            metadata.insert(
+                "tags".into(),
+                serde_json::Value::Array(
+                    tags.iter()
+                        .map(|t| serde_json::Value::String((*t).into()))
+                        .collect(),
+                ),
+            );
+        }
+        Document {
+            id,
+            source_path: path.into(),
+            chunk_index,
+            text: text.into(),
+            headings: headings.iter().map(|s| (*s).into()).collect(),
+            metadata,
+            vector,
+        }
+    }
+
+    #[test]
+    fn path_prefix_filter() {
+        let filter = SearchFilter {
+            path_prefix: Some("teams/".into()),
+            ..Default::default()
+        };
+        let team = doc_at(
+            1,
+            "teams/storage.md",
+            0,
+            "storage",
+            &[],
+            &[],
+            vec![1.0, 0.0],
+        );
+        let guide = doc_at(
+            2,
+            "guides/onboarding.md",
+            0,
+            "onboard",
+            &[],
+            &[],
+            vec![0.0, 1.0],
+        );
+        assert!(filter.matches(&team));
+        assert!(!filter.matches(&guide));
+    }
+
+    #[test]
+    fn heading_and_tag_filters() {
+        let d = doc_at(
+            1,
+            "org/process.md",
+            0,
+            "body",
+            &["Release", "Backports"],
+            &["ga", "storage"],
+            vec![1.0],
+        );
+        assert!(SearchFilter {
+            heading: Some("back".into()),
+            ..Default::default()
+        }
+        .matches(&d));
+        assert!(!SearchFilter {
+            heading: Some("network".into()),
+            ..Default::default()
+        }
+        .matches(&d));
+        assert!(SearchFilter {
+            tag: Some("Storage".into()),
+            ..Default::default()
+        }
+        .matches(&d));
+        assert!(!SearchFilter {
+            tag: Some("network".into()),
+            ..Default::default()
+        }
+        .matches(&d));
+    }
+
+    #[test]
+    fn get_chunk_by_citation() {
+        let docs = vec![
+            doc_at(1, "a.md", 0, "first", &[], &[], vec![1.0, 0.0]),
+            doc_at(2, "a.md", 1, "second", &[], &[], vec![0.0, 1.0]),
+            doc_at(3, "b.md", 0, "other", &[], &[], vec![0.5, 0.5]),
+        ];
+        let texts: Vec<String> = docs.iter().map(|d| d.text.clone()).collect();
+        let idx = Index {
+            bm25: Bm25::build(&texts),
+            docs,
+        };
+        assert_eq!(idx.get("a.md", 1).map(|d| d.text.as_str()), Some("second"));
+        assert!(idx.get("a.md", 9).is_none());
+        let all_a = idx.get_by_path("a.md");
+        assert_eq!(all_a.len(), 2);
+        assert_eq!(all_a[0].chunk_index, 0);
+        assert_eq!(all_a[1].chunk_index, 1);
     }
 }

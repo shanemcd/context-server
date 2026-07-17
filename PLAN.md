@@ -55,9 +55,10 @@ Only `.md` / `.markdown` files are indexed. Structured sources (team YAML, etc.)
 
 ## MCP tools
 
-- `semantic_search(query, limit)` — hybrid
-- `list_documents(limit)`
-- `answer_question(question, limit)` — retrieval only
+- `semantic_search(query, limit, path_prefix?, heading?, tag?)` — hybrid
+- `list_documents(limit, path_prefix?)`
+- `answer_question(question, limit, path_prefix?, heading?, tag?)` — retrieval only
+- `get_document(source_path, chunk_index?)` — full chunk(s) by citation
 
 ## Status
 
@@ -68,6 +69,7 @@ Only `.md` / `.markdown` files are indexed. Structured sources (team YAML, etc.)
 - [x] Static ORT (no `libonnxruntime.so` in `ldd`)
 - [x] Claude Code stdio MCP verified against a local knowledge base
 - [x] PyPI wheels via Containerfile + maturin
+- [x] Search filters (`path_prefix`, `heading`, `tag`) + `get_document` citations
 
 ## Roadmap
 

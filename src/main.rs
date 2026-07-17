@@ -62,8 +62,28 @@ enum Commands {
         /// Search mode: hybrid (default), dense, or lexical
         #[arg(long, default_value = "hybrid")]
         mode: String,
+        /// Only search source_path values with this prefix
+        #[arg(long)]
+        path_prefix: Option<String>,
+        /// Only search chunks whose heading contains this substring
+        #[arg(long)]
+        heading: Option<String>,
+        /// Only search chunks with this metadata tag
+        #[arg(long)]
+        tag: Option<String>,
         /// Query text
         query: Vec<String>,
+    },
+    /// Fetch a chunk by citation (source_path + chunk index)
+    Get {
+        #[arg(long, default_value = "context.db")]
+        db: String,
+        /// Indexed source path (e.g. teams/storage.md)
+        #[arg(long)]
+        path: String,
+        /// Chunk index; omit to print all chunks for the path
+        #[arg(long)]
+        chunk: Option<usize>,
     },
     /// Embed a string (smoke test)
     Embed { text: Vec<String> },
@@ -92,8 +112,12 @@ fn main() -> Result<()> {
             db,
             limit,
             mode,
+            path_prefix,
+            heading,
+            tag,
             query,
-        } => run_search(db, limit, mode, query),
+        } => run_search(db, limit, mode, path_prefix, heading, tag, query),
+        Commands::Get { db, path, chunk } => run_get(db, path, chunk),
         Commands::Embed { text } => run_embed(text),
     }
 }
@@ -203,7 +227,15 @@ async fn run_serve(db_spec: String) -> Result<()> {
     Ok(())
 }
 
-fn run_search(db_spec: String, limit: usize, mode: String, query: Vec<String>) -> Result<()> {
+fn run_search(
+    db_spec: String,
+    limit: usize,
+    mode: String,
+    path_prefix: Option<String>,
+    heading: Option<String>,
+    tag: Option<String>,
+    query: Vec<String>,
+) -> Result<()> {
     let q = query.join(" ").trim().to_string();
     if q.is_empty() {
         bail!("usage: context-server search --db context.db <query>");
@@ -211,6 +243,11 @@ fn run_search(db_spec: String, limit: usize, mode: String, query: Vec<String>) -
     let mode = SearchMode::parse(&mode).ok_or_else(|| {
         anyhow::anyhow!("unknown --mode {mode:?} (expected hybrid, dense, or lexical)")
     })?;
+    let filter = search::SearchFilter {
+        path_prefix,
+        heading,
+        tag,
+    };
     let db_path = remote::resolve_db_blocking(&db_spec)?;
     let db = store::Db::open(&db_path)?;
     let idx = search::Index::load(&db)?;
@@ -218,7 +255,7 @@ fn run_search(db_spec: String, limit: usize, mode: String, query: Vec<String>) -
         bail!("database {} has no documents", db_path.display());
     }
     let mut emb = embed::Embedder::new()?;
-    let hits = idx.query(&mut emb, &q, limit, mode)?;
+    let hits = idx.query_filtered(&mut emb, &q, limit, mode, &filter)?;
     println!("query={q:?} mode={mode:?} ({} indexed chunks)", idx.len());
     for (i, h) in hits.iter().enumerate() {
         let mut preview = h.text.clone();
@@ -238,6 +275,45 @@ fn run_search(db_spec: String, limit: usize, mode: String, query: Vec<String>) -
         );
     }
     Ok(())
+}
+
+fn run_get(db_spec: String, path: String, chunk: Option<usize>) -> Result<()> {
+    let db_path = remote::resolve_db_blocking(&db_spec)?;
+    let db = store::Db::open(&db_path)?;
+    let idx = search::Index::load(&db)?;
+    match chunk {
+        Some(i) => {
+            let Some(d) = idx.get(&path, i) else {
+                bail!("no chunk {path}#{i}");
+            };
+            print_chunk(d);
+        }
+        None => {
+            let docs = idx.get_by_path(&path);
+            if docs.is_empty() {
+                bail!("no chunks for {path}");
+            }
+            for d in docs {
+                print_chunk(d);
+                println!();
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_chunk(d: &store::Document) {
+    if !d.headings.is_empty() {
+        println!(
+            "{}#{} [{}]",
+            d.source_path,
+            d.chunk_index,
+            d.headings.join(" > ")
+        );
+    } else {
+        println!("{}#{}", d.source_path, d.chunk_index);
+    }
+    println!("{}", d.text);
 }
 
 fn run_embed(text: Vec<String>) -> Result<()> {

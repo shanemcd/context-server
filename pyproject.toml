@@ -11,7 +11,7 @@ readme = "README.md"
 dynamic = ["version"]
 
 [project.urls]
-Repository = "https://github.com/shanemcd/context-server"
+Repository = "https://github.com/context-server/context-server"
 
 [tool.maturin]
 bindings = "bin"

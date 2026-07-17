@@ -13,7 +13,7 @@ use std::sync::Mutex;
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SearchRequest {
     #[schemars(
-        description = "Natural-language search query. Include names, teams, acronyms, or topic keywords (e.g. 'who manages CNV storage', 'dkenigsb', 'backport process')."
+        description = "Natural-language search query. Include names, teams, acronyms, or topic keywords (e.g. 'who manages the storage team', 'backport process')."
     )]
     pub query: String,
     #[schemars(description = "Max passages to return (default 5)")]

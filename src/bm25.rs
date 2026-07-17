@@ -82,7 +82,7 @@ impl Bm25 {
     }
 }
 
-/// Lowercase alphanumeric tokens; keeps identifiers like `dkenigsb`, `cnv`.
+/// Lowercase alphanumeric tokens; keeps identifiers like `alice`, `cdn`.
 pub fn tokenize(text: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut cur = String::new();
@@ -136,10 +136,10 @@ mod tests {
         let texts = vec![
             "storage team owns ceph csi".into(),
             "networking team owns ovn".into(),
-            "dkenigsb is the manager for openshift virtualization".into(),
+            "jsmith is the manager for platform virtualization".into(),
         ];
         let bm = Bm25::build(&texts);
-        let scores = bm.scores("dkenigsb virtualization");
+        let scores = bm.scores("jsmith virtualization");
         let best = scores
             .iter()
             .enumerate()

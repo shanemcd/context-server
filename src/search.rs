@@ -223,7 +223,7 @@ mod tests {
             ),
             doc(
                 2,
-                "dkenigsb manages openshift virtualization",
+                "jsmith manages platform virtualization",
                 vec![0.0, 1.0, 0.0],
             ),
         ];
@@ -233,8 +233,8 @@ mod tests {
             docs,
         };
         let dense = vec![0.95f32, 0.10]; // favors doc 0
-        let lexical = idx.bm25.scores("dkenigsb");
+        let lexical = idx.bm25.scores("jsmith");
         let hits = hybrid_rrf(&idx.docs, &dense, &lexical, 2);
-        assert_eq!(hits[0].text.contains("dkenigsb"), true, "{hits:?}");
+        assert_eq!(hits[0].text.contains("jsmith"), true, "{hits:?}");
     }
 }

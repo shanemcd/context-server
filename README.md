@@ -97,11 +97,11 @@ to call this corpus (falls back to a generic blurb if unset).
 
 ```bash
 # Short form (globally unique bucket)
-context-server serve --db 'gs://vme-cnv-context/latest/cnv.db'
+context-server serve --db 'gs://my-context-bucket/latest/context.db'
 
 # Project-qualified (still requires gs://; stripped for the Storage API)
 context-server serve --db \
-  'gs://projects/itpc-gcp-hcm-pe-eng-claude/buckets/vme-cnv-context/objects/latest/cnv.db'
+  'gs://projects/my-gcp-project/buckets/my-context-bucket/objects/latest/context.db'
 ```
 
 Uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials)

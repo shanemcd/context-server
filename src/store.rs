@@ -353,16 +353,16 @@ mod tests {
             metadata: serde_json::Map::new(),
         }];
         let vectors = vec![vec![1.0f32; embed::DIM]];
-        db.replace_all(&chunks, &vectors, Some("use for VME")).unwrap();
+        db.replace_all(&chunks, &vectors, Some("use for org docs")).unwrap();
         assert_eq!(
             db.get_meta("instructions").unwrap().as_deref(),
-            Some("use for VME")
+            Some("use for org docs")
         );
         // Re-index without instructions flag keeps prior value.
         db.replace_all(&chunks, &vectors, None).unwrap();
         assert_eq!(
             db.get_meta("instructions").unwrap().as_deref(),
-            Some("use for VME")
+            Some("use for org docs")
         );
         db.replace_all(&chunks, &vectors, Some("updated")).unwrap();
         assert_eq!(

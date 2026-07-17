@@ -1,7 +1,7 @@
 //! Resolve `--db` to a local SQLite path, fetching from GCS when needed.
 //!
 //! Remote fetches look for a sibling `{object}.sha256` (sha256sum format, as
-//! published by cnv-context). When the local cache matches that checksum, the
+//! published next to the DB). When the local cache matches that checksum, the
 //! DB download is skipped.
 
 use anyhow::{bail, Context, Result};
@@ -220,9 +220,9 @@ async fn fetch_gcs_db(gcs: &GcsRef) -> Result<PathBuf> {
     let cache_dir = cache_dir_for(gcs)?;
     fs::create_dir_all(&cache_dir)
         .with_context(|| format!("create cache dir {}", cache_dir.display()))?;
-    let dest = cache_dir.join("cnv.db");
-    let checksum_path = cache_dir.join("cnv.db.sha256");
-    let tmp = cache_dir.join("cnv.db.partial");
+    let dest = cache_dir.join("context.db");
+    let checksum_path = cache_dir.join("context.db.sha256");
+    let tmp = cache_dir.join("context.db.partial");
 
     let client = Storage::builder()
         .build()
@@ -237,7 +237,7 @@ async fn fetch_gcs_db(gcs: &GcsRef) -> Result<PathBuf> {
             if local.as_ref() == Some(remote) {
                 // Refresh local checksum file if we computed it from the DB.
                 if !checksum_path.is_file() {
-                    let _ = write_sha256_file(&checksum_path, remote, "cnv.db");
+                    let _ = write_sha256_file(&checksum_path, remote, "context.db");
                 }
                 eprintln!(
                     "context-server: cache hit for gs://{}/{} (sha256 {})",
@@ -296,7 +296,7 @@ async fn fetch_gcs_db(gcs: &GcsRef) -> Result<PathBuf> {
 
     fs::rename(&tmp, &dest)
         .with_context(|| format!("rename {} -> {}", tmp.display(), dest.display()))?;
-    write_sha256_file(&checksum_path, &digest, "cnv.db")?;
+    write_sha256_file(&checksum_path, &digest, "context.db")?;
     eprintln!(
         "context-server: downloaded {total} bytes (sha256 {})",
         &digest[..12]
@@ -320,8 +320,8 @@ mod tests {
     #[test]
     fn parse_local_path() {
         assert_eq!(
-            parse_db_spec("/tmp/cnv.db").unwrap(),
-            DbSpec::Local(PathBuf::from("/tmp/cnv.db"))
+            parse_db_spec("/tmp/context.db").unwrap(),
+            DbSpec::Local(PathBuf::from("/tmp/context.db"))
         );
         assert_eq!(
             parse_db_spec("context.db").unwrap(),
@@ -331,25 +331,25 @@ mod tests {
 
     #[test]
     fn parse_short_gs() {
-        let s = parse_db_spec("gs://vme-cnv-context/latest/cnv.db").unwrap();
+        let s = parse_db_spec("gs://my-context-bucket/latest/context.db").unwrap();
         assert_eq!(
             s,
             DbSpec::Gcs(GcsRef {
                 project: None,
-                bucket: "vme-cnv-context".into(),
-                object: "latest/cnv.db".into(),
+                bucket: "my-context-bucket".into(),
+                object: "latest/context.db".into(),
             })
         );
         if let DbSpec::Gcs(g) = s {
-            assert_eq!(g.bucket_resource(), "projects/_/buckets/vme-cnv-context");
-            assert_eq!(g.checksum_object(), "latest/cnv.db.sha256");
+            assert_eq!(g.bucket_resource(), "projects/_/buckets/my-context-bucket");
+            assert_eq!(g.checksum_object(), "latest/context.db.sha256");
         }
     }
 
     #[test]
     fn bare_resource_name_is_local_path() {
         let path =
-            "projects/itpc-gcp-hcm-pe-eng-claude/buckets/vme-cnv-context/objects/latest/cnv.db";
+            "projects/my-gcp-project/buckets/my-context-bucket/objects/latest/context.db";
         assert_eq!(
             parse_db_spec(path).unwrap(),
             DbSpec::Local(PathBuf::from(path))
@@ -359,19 +359,19 @@ mod tests {
     #[test]
     fn parse_gs_wrapped_resource_name() {
         let s = parse_db_spec(
-            "gs://projects/itpc-gcp-hcm-pe-eng-claude/buckets/vme-cnv-context/objects/latest/cnv.db",
+            "gs://projects/my-gcp-project/buckets/my-context-bucket/objects/latest/context.db",
         )
         .unwrap();
         assert_eq!(
             s,
             DbSpec::Gcs(GcsRef {
-                project: Some("itpc-gcp-hcm-pe-eng-claude".into()),
-                bucket: "vme-cnv-context".into(),
-                object: "latest/cnv.db".into(),
+                project: Some("my-gcp-project".into()),
+                bucket: "my-context-bucket".into(),
+                object: "latest/context.db".into(),
             })
         );
         if let DbSpec::Gcs(g) = s {
-            assert_eq!(g.bucket_resource(), "projects/_/buckets/vme-cnv-context");
+            assert_eq!(g.bucket_resource(), "projects/_/buckets/my-context-bucket");
         }
     }
 
@@ -411,7 +411,7 @@ mod tests {
     fn parse_sha256sum_lines() {
         assert_eq!(
             parse_sha256_text(
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  cnv.db\n"
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  context.db\n"
             )
             .unwrap(),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

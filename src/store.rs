@@ -14,7 +14,6 @@ pub struct Document {
     pub chunk_index: usize,
     pub text: String,
     pub headings: Vec<String>,
-    #[allow(dead_code)]
     pub metadata: serde_json::Map<String, serde_json::Value>,
     pub vector: Vec<f32>,
 }

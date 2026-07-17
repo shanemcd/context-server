@@ -65,7 +65,10 @@ git push origin "$tag"    # triggers Release workflow → PyPI
 ```
 
 `setuptools-scm` is not used (maturin cannot consume it).
+
 ## Usage
+
+### Local database
 
 ```bash
 # Preview how documents will be chunked
@@ -86,14 +89,51 @@ git push origin "$tag"    # triggers Release workflow → PyPI
 ./target/release/context-server serve --db context.db
 ```
 
-### MCP instructions in the DB
-
 `index --instructions` / `--instructions-file` writes `meta.instructions`.
 `serve` exposes that text as MCP `ServerInfo.instructions` so clients know when
 to call this corpus (falls back to a generic blurb if unset).
 
-`serve` and `search` accept a remote `--db` and download it into the local cache
-(`$XDG_CACHE_HOME/context-server/dbs/...`, or `~/.cache/...`) before opening:
+Re-index when content changes, then restart the MCP session so `serve` reloads the DB into memory.
+
+#### Claude Code
+
+```bash
+claude mcp add --transport stdio --scope user context-server \
+  -- uvx --refresh context-server@latest \
+  serve --db /absolute/path/to/context.db
+```
+
+`--refresh` + `@latest` rechecks PyPI on each start so you pick up new releases.
+If Claude rarely calls the tools (tool search defers MCP tools), add `"alwaysLoad": true` to the server entry in your Claude MCP config so these tools stay visible every turn.
+
+#### Cursor
+
+Add to `~/.cursor/mcp.json` (or your project `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "context-server": {
+      "command": "uvx",
+      "args": [
+        "--refresh",
+        "context-server@latest",
+        "serve",
+        "--db",
+        "/absolute/path/to/context.db"
+      ]
+    }
+  }
+}
+```
+
+Or point `command` at a local binary and put `serve` / `--db` / the path in `args`. Restart Cursor (or reload MCP) after editing.
+
+### Remote database (GCS)
+
+`serve` and `search` also accept a `gs://` URI. The object is downloaded into the
+local cache (`$XDG_CACHE_HOME/context-server/dbs/...`, or `~/.cache/...`) before
+opening. `index` still writes a local path only.
 
 ```bash
 # Short form (globally unique bucket)
@@ -108,19 +148,7 @@ Uses [Application Default Credentials](https://cloud.google.com/docs/authenticat
 (`gcloud auth application-default login`, or `GOOGLE_APPLICATION_CREDENTIALS`).
 When a sibling `{object}.sha256` exists (sha256sum format), the download is
 skipped if the local cache already matches; otherwise the DB is re-fetched and
-verified. `index` still writes a local path only.
-
-### Claude Code
-
-```bash
-claude mcp add --transport stdio --scope user context-server \
-  -- /absolute/path/to/context-server serve --db /absolute/path/to/context.db
-```
-
-Re-index when content changes, then restart the MCP session so `serve` reloads the DB into memory.
-For a GCS-backed DB, point `--db` at a `gs://...` URI.
-
-If Claude rarely calls the tools (tool search defers MCP tools), add `"alwaysLoad": true` to the server entry in your Claude MCP config so these tools stay visible every turn.
+verified.
 
 ## MCP tools
 

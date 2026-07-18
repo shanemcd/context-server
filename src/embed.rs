@@ -92,19 +92,16 @@ mod tests {
 
     #[test]
     fn model_cache_dir_defaults_under_xdg_cache() {
-        if std::env::var_os("FASTEMBED_CACHE_DIR").is_some() || std::env::var_os("HF_HOME").is_some()
+        if std::env::var_os("FASTEMBED_CACHE_DIR").is_some()
+            || std::env::var_os("HF_HOME").is_some()
         {
             return;
         }
         let dir = model_cache_dir().expect("cache dir");
         assert!(dir.is_absolute(), "cache dir should be absolute: {dir:?}");
-        assert_eq!(
-            dir.file_name().and_then(|s| s.to_str()),
-            Some("fastembed")
-        );
+        assert_eq!(dir.file_name().and_then(|s| s.to_str()), Some("fastembed"));
         assert!(
-            dir.components()
-                .any(|c| c.as_os_str() == "context-server"),
+            dir.components().any(|c| c.as_os_str() == "context-server"),
             "unexpected cache dir: {dir:?}"
         );
     }

@@ -21,7 +21,9 @@ context-server serve --db context.db
 
 Wheels: Linux x86_64/aarch64 (`manylinux_2_39` / glibc 2.39+, e.g. Ubuntu 24.04+) and macOS Apple Silicon.
 
-The first embedding run downloads All-MiniLM-L6-v2 into the local Hugging Face / fastembed cache (once, tens of MB).
+The first embedding run downloads All-MiniLM-L6-v2 into
+`$XDG_CACHE_HOME/context-server/fastembed/` (or `~/.cache/...`; once, tens of MB).
+Override with `FASTEMBED_CACHE_DIR` or `HF_HOME`.
 
 ### Optional: tell the agent when to use this corpus
 

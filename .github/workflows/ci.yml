@@ -91,11 +91,20 @@ jobs:
         with:
           shared-key: wheel-linux-${{ matrix.arch }}
 
-      # Host glibc 2.39 matches manylinux_2_39 (same base as Containerfile).
-      - uses: PyO3/maturin-action@v1
-        with:
-          args: --release --locked --compatibility manylinux_2_39 --out dist
-          manylinux: 'off'
+      # Call maturin on the host (not maturin-action): the action injects its own
+      # --compatibility and conflicts with manylinux_2_39. glibc 2.39 on
+      # ubuntu-24.04 matches the Containerfile / PyPI tag.
+      - name: Install maturin
+        run: sudo python3 -m pip install --break-system-packages 'maturin[patchelf]>=1.0,<2.0'
+
+      - name: Build wheel
+        env:
+          OPENSSL_NO_VENDOR: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          maturin build --release --locked --compatibility manylinux_2_39 -o dist
+          ls -la dist
 
       - name: Build sdist
         if: matrix.arch == 'x86_64'

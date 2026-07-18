@@ -79,11 +79,19 @@ jobs:
         with:
           shared-key: wheel-linux-${{ matrix.arch }}
 
-      # Native Ubuntu 24.04 + rust-cache (same as CI). Containerfile stays for local builds.
-      - uses: PyO3/maturin-action@v1
-        with:
-          args: --release --locked --compatibility manylinux_2_39 --out dist
-          manylinux: 'off'
+      # Host maturin + rust-cache (same as CI). Avoid maturin-action here: it
+      # injects --compatibility and conflicts with manylinux_2_39.
+      - name: Install maturin
+        run: sudo python3 -m pip install --break-system-packages 'maturin[patchelf]>=1.0,<2.0'
+
+      - name: Build wheel
+        env:
+          OPENSSL_NO_VENDOR: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          maturin build --release --locked --compatibility manylinux_2_39 -o dist
+          ls -la dist
 
       - name: Build sdist
         if: matrix.arch == 'x86_64'

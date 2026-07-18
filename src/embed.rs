@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use std::path::PathBuf;
 
 /// Stored in the DB so we refuse to search against an incompatible index.
 pub const MODEL_ID: &str = "AllMiniLML6V2";
@@ -13,8 +14,13 @@ pub struct Embedder {
 
 impl Embedder {
     pub fn new() -> Result<Self> {
+        let cache_dir = model_cache_dir()?;
+        std::fs::create_dir_all(&cache_dir)
+            .with_context(|| format!("create model cache dir {}", cache_dir.display()))?;
         let model = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+            InitOptions::new(EmbeddingModel::AllMiniLML6V2)
+                .with_cache_dir(cache_dir)
+                .with_show_download_progress(true),
         )
         .context("load embedding model (AllMiniLML6V2)")?;
         Ok(Self { model })
@@ -42,6 +48,21 @@ impl Embedder {
     }
 }
 
+/// Prefer explicit env overrides, otherwise use the XDG cache (not the process cwd).
+/// fastembed's default is `.fastembed_cache` in PWD, which pollutes project trees.
+fn model_cache_dir() -> Result<PathBuf> {
+    if let Ok(p) = std::env::var("FASTEMBED_CACHE_DIR") {
+        return Ok(PathBuf::from(p));
+    }
+    if let Ok(p) = std::env::var("HF_HOME") {
+        return Ok(PathBuf::from(p));
+    }
+    Ok(dirs::cache_dir()
+        .context("no cache directory (set XDG_CACHE_HOME or HOME)")?
+        .join("context-server")
+        .join("fastembed"))
+}
+
 fn l2_normalize(v: &mut [f32]) {
     let mut sum = 0.0f32;
     for x in v.iter() {
@@ -63,4 +84,28 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
         sum += a[i] * b[i];
     }
     sum
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_cache_dir_defaults_under_xdg_cache() {
+        if std::env::var_os("FASTEMBED_CACHE_DIR").is_some() || std::env::var_os("HF_HOME").is_some()
+        {
+            return;
+        }
+        let dir = model_cache_dir().expect("cache dir");
+        assert!(dir.is_absolute(), "cache dir should be absolute: {dir:?}");
+        assert_eq!(
+            dir.file_name().and_then(|s| s.to_str()),
+            Some("fastembed")
+        );
+        assert!(
+            dir.components()
+                .any(|c| c.as_os_str() == "context-server"),
+            "unexpected cache dir: {dir:?}"
+        );
+    }
 }

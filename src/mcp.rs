@@ -271,11 +271,8 @@ impl ContextService {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for ContextService {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(self.instructions.clone()),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(self.instructions.clone())
     }
 }
 
